@@ -1,28 +1,41 @@
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
 
 class project{
-    private static int maxDimension = 5;
-    private static int k = 1;
+    private static int maxDimension = 10;
+    private static int k = 2;
     private int[] locationBotG;
     String[][] grid;
     Set<String> visitedCells = new HashSet<>();
     int[] dx = { -1, 1, 0, 0 };
     int[] dy = { 0, 0, -1, 1 };
+    Random random;
     /**
     TODO:
-    WHAT TO DO WHEN FINDING THE LEAK CELL IN BOT 1 (marking it as leak cell and marking other cells as not containing the leak cell)
+    1- WHAT TO DO WHEN FINDING THE LEAK CELL IN BOT 1 (marking it as leak cell and marking other cells as not containing the leak cell)
         - just run bfs (this seems to work just fine, I want to ask to the ta as well)
+    2- I NEED TO FIGURE OUT WHY IT GETS STUCK IN THE LOOP
+
+    
+
+
+
     Questions:
     what do you do when it gets stuck in the edge case that I took a picture in my phone
+    the way I move the bot it intents to explore the top left first then checks the rest
+    **after finding the leak cell in the detection square, are you only allowed to go to the cells that didn't marked as not contained?
     
 
     Bot 2 idea: The bot tries to go to the center of the grid first while still checking for the detection square,
@@ -148,9 +161,11 @@ class project{
         int y = locationLeak[1];
         
         if (grid[x][y].equals("B")){
+            System.out.println("true");
             return true;
         }
         else{
+            System.out.println("false");
             return false;
         }
     }
@@ -210,44 +225,27 @@ class project{
     // this should try to go to the cells with value "O" first in the up, down, left and right directions, 
     // if it can't find a cell like that then should go to the cells with value "M"
     // 
+    private static class Node {
+        private int row;
+        private int col;
+        private int cost;
+        private Node parent;
 
-    
-    public void moveToPossibilityLeak(String[][] grid, int[] locationBot){
-        // int[] dx = {-1, 1, 0, 0};
-        // int[] dy = {0, 0, -1, 1};
-        // int row = locationBot[0];
-        // int col = locationBot[1];
-        // printGrid(grid);
+        public Node(int row, int col, int cost, Node parent) {
+            this.row = row;
+            this.col = col;
+            this.cost = cost;
+            this.parent = parent;
+        }
         
-        // for(int i = 0; i < 4; i++){
-        //     // first look if there is any neighboring cell with value O
-        //     // if there is just move to there
-        //     // if not just move to a cell with value M
-        //     int newRow = row + dx[i];
-        //     int newCol = col + dy[i];
-        //     if(isValidCell(newRow, newCol, grid) && !grid[newRow][newCol].equals("X") && !grid[newRow][newCol].equals("P")){
-        //         printGrid(grid);
-        //         if(checkForO(grid, newRow, newCol)){
-        //             moveBotToNewCell(row, col, newRow, newCol);
-        //             return;
-        //         }
-        //         else{
-        //             if(checkForM(grid, newRow, newCol)){
-        //                 moveBotToNewCell(row, col, newRow, newCol);
-        //                 return;
-        //             }
-        //             else{
-        //                 return;
-        //             }
-        //         }
-        //     }
-        // }
-        // need to make this visitedCells global so that way it doesn't count twice
-        // int[] dx = { -1, 1, 0, 0 };
-        // int[] dy = { 0, 0, -1, 1 };
+    }
+
+    // when you couldn't find the leak go to closest open cell that isn't marked as M
+    public void moveToPossibilityLeak(String[][] grid, int[] locationBot){
+        
         int row = locationBot[0];
         int col = locationBot[1];
-        
+
         printGrid(grid);
         
         
@@ -267,20 +265,68 @@ class project{
                 }
             }
         }
-
-        // If all neighboring cells are visited, go to an already visited cell.
-        for (int i = 0; i < 4; i++) {
+        int cur = 0;
+        
+        //If all neighboring cells are visited, go to an already visited cell.
+        for (int i = 1; i < 4; i += 3) {
             int newRow = row + dx[i];
             int newCol = col + dy[i];
-            if (isValidCell(newRow, newCol, grid) && visitedCells.contains(newRow + "," + newCol)) {
+            if (isValidCell(newRow, newCol, grid) && !grid[newRow][newCol].equals("X") ) {
                 moveBotToNewCell(row, col, newRow, newCol);
                 return;
             }
+
+            
+            cur++;
+            if(cur == 1){
+                newRow = row + dx[2];
+                newCol = col + dy[2];
+                if (isValidCell(newRow, newCol, grid) && !grid[newRow][newCol].equals("X") ) {
+                    moveBotToNewCell(row, col, newRow, newCol);
+                    return;
+                }
+                else{
+                    cur ++;
+                    
+                }
+                if(cur == 1){
+                    newRow = row + dx[3];
+                    newCol = col + dy[3];
+                    if (isValidCell(newRow, newCol, grid) && !grid[newRow][newCol].equals("X") ) {
+                        moveBotToNewCell(row, col, newRow, newCol);
+                        return;
+                    }
+                }
+                newRow = row + dx[0];
+                newCol = col + dy[0];
+                if (isValidCell(newRow, newCol, grid) && !grid[newRow][newCol].equals("X") ) {
+                    moveBotToNewCell(row, col, newRow, newCol);
+                    return;
+                }
+                cur++;
+                if(cur == 3){
+                    newRow = row + dx[3];
+                    newCol = col + dy[3];
+                    if (isValidCell(newRow, newCol, grid) && !grid[newRow][newCol].equals("X") ) {
+                        moveBotToNewCell(row, col, newRow, newCol);
+                        return;
+                    }
+                    newRow = row + dx[1];
+                    newCol = col + dy[1];
+                    if (isValidCell(newRow, newCol, grid) && !grid[newRow][newCol].equals("X") ) {
+                        moveBotToNewCell(row, col, newRow, newCol);
+                        return;
+                    }
+                    cur--;
+                }
+            }
+        }
+            
+            
         }
         
-        
-    }
-
+    
+    
     public boolean checkForM(String[][] grid, int botRow, int botCol){
         if(isValidCell(botRow, botCol, grid) && grid[botRow][botCol].equals("M")){
             return true;            
@@ -332,7 +378,7 @@ class project{
         Queue<int[]> queue = new LinkedList<>();
         queue.offer(locationBot);
 
-        while (!queue.isEmpty()) {
+        while (!queue.isEmpty() && queue.size() < (maxDimension * maxDimension)) {
             int size = queue.size();
 
             for (int i = 0; i < size; i++) {
@@ -358,11 +404,27 @@ class project{
                         }
                         else if(grid[newRow][newCol].equals("P")){
                             queue.offer(new int[]{newRow, newCol});
-                            grid[newRow][newCol] = "B"; // Mark the cell as visited.
+                            grid[newRow][newCol] = "M"; // Mark the cell as visited.
                         }
                         
                     }
                 }
+                for(int k = 0; k < 4; k++){
+                    int newRow = x + dx[k];
+                    int newCol = y + dy[k];
+
+                    if(isValidCell(newRow, newCol, grid)){
+                        if(grid[newRow][newCol].equals("L")){
+                            grid[newRow][newCol].equals("B");
+                            return true;
+                        }
+                        else if(grid[newRow][newCol].equals("M")){
+                            queue.offer(new int[]{newRow, newCol});
+                            // we don't know if we should mark this as anything
+                        }
+                    }
+                }
+
             }
 
         }
