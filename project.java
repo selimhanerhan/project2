@@ -4,6 +4,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -11,11 +12,12 @@ import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.Random;
 import java.util.Set;
+import java.util.Stack;
 import java.util.concurrent.ThreadLocalRandom;
 
 class project{
     private static int maxDimension = 10;
-    private static int k = 2;
+    private static int k = 1;
     private int[] locationBotG;
     String[][] grid;
     Set<String> visitedCells = new HashSet<>();
@@ -24,10 +26,8 @@ class project{
     Random random;
     /**
     TODO:
-    1- WHAT TO DO WHEN FINDING THE LEAK CELL IN BOT 1 (marking it as leak cell and marking other cells as not containing the leak cell)
-        - just run bfs (this seems to work just fine, I want to ask to the ta as well)
-    2- I NEED TO FIGURE OUT WHY IT GETS STUCK IN THE LOOP
-
+    1- is there a faster way to reach to subgrid center cell?
+    2- 
     
 
 
@@ -91,12 +91,36 @@ class project{
 
         while(result != true){
             theProject.printGrid(theProject.grid);
-            theProject.move(theProject.grid, theProject.locationBotG, locationLeak);
-            result = theProject.finalCheck(theProject.grid, locationLeak);
+            //theProject.secondBot(theProject.grid, theProject.locationBotG, locationLeak);
+            //result = theProject.bot1(theProject.grid,locationLeak);
+            
         }
         
-        
     }
+    private double m = 0.5;
+
+    public void thirdBot(String[][] grid, int[] locationBot, int[] locationLeak){
+        /**
+         
+    1-Initialize the probability of each cell containing the leak.
+    2-Create a priority queue to store the cells in order of decreasing probability.
+    3-Add the initial cell to the priority queue.
+    4- Repeat until the leak is found:
+        4a-Remove the first cell from the priority queue.
+        4b-Take the sense action at the current cell.
+        4c-Update the probability of each cell containing the leak based on the result of the sense action.
+        4d-Add the neighbors of the current cell to the priority queue, if they are not already in the queue.
+    5-If the probability of any cell containing the leak is 1, then return the coordinates of that cell.
+    6-Otherwise, return None.
+
+         */
+            
+    }
+    private static boolean sense(String[][] grid, int cellIndex) {
+        // Check if the current cell contains a leak.
+        return grid[cellIndex / grid[0].length][cellIndex % grid[0].length].equals("L");
+    }
+    
      
 
     public void secondBot(String[][] grid, int[] locationBot, int[] locationLeak) {
@@ -111,13 +135,147 @@ class project{
     7- Repeat steps 3-6 until the leak is found.
 
          */
+        boolean result = false;
         List<int[]> subGrids = getSubGrids(grid);
-        int[] closestCenterCell = findClosestSubgridCenter(locationBot, subGrids);
-        bfsForShortestPath(grid, locationBotG, closestCenterCell);
-        locationBotG = closestCenterCell;
-        //senseLeak(grid,closestCenterCell, locationLeak);
-        System.out.println(closestCenterCell);
+        
+         while(!result){
+            int[] closestCenterCell = findClosestSubgridCenter(locationBot, subGrids);
+            botToCenterCell(grid, locationBot, closestCenterCell);
+            printGrid(grid);
+            locationBotG = closestCenterCell;
+            if(senseLeakSecondBot(grid, locationBotG) == true){
+                // we found the leak in the detection square now we can do the same thing as bot 1
+                result = true;
+            }
+            else{
+                result = false;
+                // subgrid have row equal to the int[0] closestCenterCell
+                // col equal to the int[1] closestCenterCell
+                // if we just remove them we can get the closest next subgrid
+                printGrid(grid);
+                Iterator<int[]> iterator = subGrids.iterator();
+
+                // Iterate over the list and compare each item to the item that you want to remove.
+                while (iterator.hasNext()) {
+                    int[] subGrid = iterator.next();
+
+                    // If the item matches, remove it from the list using the iterator.
+                    if (subGrid[0] == closestCenterCell[0] && subGrid[1] == closestCenterCell[1]) {
+                        iterator.remove();
+                        break;
+                    }
+                }
+            }
+        }
     }
+    public boolean senseLeakSecondBot(String[][] grid,int[] locationBot){
+        
+        int x = locationBot[0];
+        int y = locationBot[1];
+        int count = 0;
+        for (int i = x - k; i <= x + k; i++) {
+            for (int j = y - k; j <= y + k; j++) {
+                if (i >= 0 && i < grid.length && j >= 0 && j < grid[0].length && count != 1) {
+                    if (grid[i][j].equals("L")) {
+                        return true;
+                    }
+                    else if(grid[i][j].equals("O")){
+                        grid[i][j] = "M";
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    public void botToCenterCell(String[][] grid, int[] locationBot, int[] goalCell) {
+        // PriorityQueue<Node> priorityQueue = new PriorityQueue<>(new Comparator<Node>() {
+        //     @Override
+        //     public int compare(Node node1, Node node2) {
+        //         return Double.compare(node1.cost, node2.cost);
+        //     }
+        // });
+        // int row = locationBot[0];
+        // int col = locationBot[1];
+        // int goalRow = goalCell[0];
+        // int goalCol = goalCell[1];
+        // priorityQueue.add(new Node(row, col, 0, null));
+
+        // while (!priorityQueue.isEmpty()) {
+        //     Node currentNode = priorityQueue.poll();
+            
+
+        //     if (currentNode.row == goalRow && currentNode.col == goalCol) {
+        //         // Found the shortest path to the goal cell.
+        //         moveBotToNewCell(row, col, goalRow, goalCol);
+        //         printGrid(grid);
+        //         return;
+        //     }
+        //     grid[currentNode.row][currentNode.col] = "M";
+
+        //     for (int i = 0; i < dx.length; i++) {
+        //         int newRow = currentNode.row + dx[i];
+        //         int newCol = currentNode.col + dy[i];
+
+        //         if (isValidCell(newRow, newCol, grid) && !visitedCells.contains(newRow + "," + newCol)) {
+        //             if(grid[newRow][newCol].equals("O")){
+        //                 int cost = currentNode.cost + 1;
+        //                 priorityQueue.add(new Node(newRow, newCol, cost, currentNode));
+        //                 visitedCells.add(newRow + "," + newCol);
+        //             }
+                    
+        //         }
+        //     }
+        // }
+        // return;
+        Queue<Node> queue = new LinkedList<>();
+        Stack<Node> stack = new Stack<>();
+        Set<String> visitedCells = new HashSet<>();
+
+        Node currentNode = new Node(locationBot[0], locationBot[1], 0, null);
+        queue.add(currentNode);
+        stack.push(currentNode);
+
+        while (!queue.isEmpty()) {
+            currentNode = queue.poll();
+            stack.pop();
+            visitedCells.add(currentNode.toString());
+            
+            if (currentNode.row == goalCell[0] && currentNode.col == goalCell[1]) {
+                if(grid[currentNode.row][currentNode.col].equals("X")){
+                    // goal cell have value X
+                    Node goalNeighbor = stack.pop();
+                    moveBotToNewCell(locationBot[0], locationBot[1], goalNeighbor.row, goalNeighbor.col);
+                    printGrid(grid);
+                    
+                    return;
+                }
+                else if(grid[currentNode.row][currentNode.col].equals("O")){
+                    // Found the goal cell.
+                    moveBotToNewCell(locationBot[0], locationBot[1], goalCell[0], goalCell[1]);
+                    return;
+                }
+                
+            }
+            grid[currentNode.row][currentNode.col] = "M";
+
+            for (int i = 0; i < dx.length; i++) {
+                int newRow = currentNode.row + dx[i];
+                int newCol = currentNode.col + dy[i];
+
+                if (isValidCell(newRow, newCol, grid) && !visitedCells.contains(newRow + "," + newCol)) {
+                    Node newNode = new Node(newRow, newCol, 0 ,currentNode);
+                    queue.add(newNode);
+                    stack.push(newNode);
+                }
+            }
+        }
+
+        // No path to the goal cell found.
+        return;
+    }
+
     public int[] findClosestSubgridCenter(int[] locationBot, List<int[]> subgridCoordinates) {
         int[] closestSubgridCenter = null;
         int minDistance = Integer.MAX_VALUE;
@@ -161,16 +319,14 @@ class project{
         int y = locationLeak[1];
         
         if (grid[x][y].equals("B")){
-            System.out.println("true");
             return true;
         }
         else{
-            System.out.println("false");
             return false;
         }
     }
-    public void move(String[][] grid,int[] locationBot, int[] locationLeak){
-        
+    /**
+     * 
         if(!senseLeak(grid, locationBot, locationLeak)){
             moveToPossibilityLeak(grid, locationBot);
         }
@@ -178,7 +334,32 @@ class project{
             //moveToLeak(grid, locationBot);
             bfsForShortestPath(grid, locationBot, locationLeak);
         }
+     */
+    public boolean bot1(String[][] grid, int[] locationLeak){
+        
+        while(!finalCheck(grid, locationLeak) ){
+            moveToNearestO(grid, locationBotG);
+            
+            boolean result = senseLeak(grid, locationBotG, locationLeak);
+            
+            if(result){
+                // move to L can work here.
+                printGrid(grid);
+                while(!finalCheck(grid, locationLeak)){
+                    moveToNearestP(grid, locationBotG);
+                }
+                if(finalCheck(grid,locationLeak)){
+                    return true;
+                }
+                // move everything that is not m or x and do finalCheck
+            }
+        }
+        
+        return false;
+        
+        
     }
+    
 
     // when you can't find the leak cell you make all the cells "not containing"
     // after finding the leak cell, you make all the cells outside of proximity to "not containing" and
@@ -189,28 +370,35 @@ class project{
         int count = 0;
         for (int i = x - k; i <= x + k; i++) {
             for (int j = y - k; j <= y + k; j++) {
-              if (i >= 0 && i < grid.length && j >= 0 && j < grid[0].length) {
-                if(count == 1){
-                    if(grid[i][j].equals("O")){
+                if (i >= 0 && i < grid.length && j >= 0 && j < grid[0].length && count != 1) {
+                    if(count == 1){
+                        if(grid[i][j].equals("O")){
+                            grid[i][j] = "P";
+                        }
+                    }
+                    if (grid[i][j].equals("L")) {
+                        count++;
                         grid[i][j] = "P";
-                        printGrid(grid);
+                    }
+                    else{
+                        if(grid[i][j].equals("O")){
+                            grid[i][j] = "M";
+                        }
+                        
+                    }
+                    // else we can mark the things that aren't L as not containing the leak.
+                    // everytime bot is in a location this method checks if there are any leak in the proximity
+                    // would changing the cells that are in the proximity with value O to value N make it work for marking the not leak cells in proximity
+                }
+                // make everywhere p here
+                else if (i >= 0 && i < grid.length && j >= 0 && j < grid[0].length && count == 1){
+                    if(!grid[i][j].equals("X") && !grid[i][j].equals("M") && !grid[i][j].equals("B")){
+                        grid[i][j] = "P";
                     }
                 }
-                if (grid[i][j].equals("L")) {
-                    count++;
-                }
-                else{
-                    if(grid[i][j].equals("O")){
-                        grid[i][j] = "M";
-                        printGrid(grid);
-                    }
-                    
-                }
-                // else we can mark the things that aren't L as not containing the leak.
-                // everytime bot is in a location this method checks if there are any leak in the proximity
-                // would changing the cells that are in the proximity with value O to value N make it work for marking the not leak cells in proximity
-              }
             }
+            
+
           }
           if(count == 1){
             return true;
@@ -241,89 +429,143 @@ class project{
     }
 
     // when you couldn't find the leak go to closest open cell that isn't marked as M
-    public void moveToPossibilityLeak(String[][] grid, int[] locationBot){
-        
+    public void moveToNearestO(String[][] grid, int[] locationBot){
+        PriorityQueue<Node> priorityQueue = new PriorityQueue<>(new Comparator<Node>() {
+            @Override
+            public int compare(Node node1, Node node2) {
+                return Double.compare(node1.cost, node2.cost);
+            }
+        });
         int row = locationBot[0];
         int col = locationBot[1];
+        priorityQueue.add(new Node(row, col, 0, null));
 
-        printGrid(grid);
-        
-        
-        for (int i = 0; i < 4; i++) {
-            int newRow = row + dx[i];
-            int newCol = col + dy[i];
+        while (!priorityQueue.isEmpty()) {
+            Node currentNode = priorityQueue.poll();
+            visitedCells.add(currentNode.row + "," + currentNode.col);
+            if (grid[currentNode.row][currentNode.col].equals("O")) {
+                // Found the closest cell with value "O".
+                // grid[currentNode.row][currentNode.col] = "B";
+                // grid[locationBot[0]][locationBot[1]] = "M";
+                moveBotToNewCell(locationBot[0], locationBot[1], currentNode.row, currentNode.col);
 
-            if (isValidCell(newRow, newCol, grid) && !visitedCells.contains(newRow + "," + newCol)) {
-                if (grid[newRow][newCol].equals("O")) {
-                    moveBotToNewCell(row, col, newRow, newCol);
-                    visitedCells.add(newRow + "," + newCol);
-                    return;
-                } else if (grid[newRow][newCol].equals("M")) {
-                    moveBotToNewCell(row, col, newRow, newCol);
-                    visitedCells.add(newRow + "," + newCol);
-                    return;
-                }
-            }
-        }
-        int cur = 0;
-        
-        //If all neighboring cells are visited, go to an already visited cell.
-        for (int i = 1; i < 4; i += 3) {
-            int newRow = row + dx[i];
-            int newCol = col + dy[i];
-            if (isValidCell(newRow, newCol, grid) && !grid[newRow][newCol].equals("X") ) {
-                moveBotToNewCell(row, col, newRow, newCol);
+                // locationBotG = new int[]{currentNode.row,currentNode.col};
                 return;
             }
+            for (int i = 0; i < 4; i++) {
+                int newRow = currentNode.row + dx[i];
+                int newCol = currentNode.col + dy[i];
 
-            
-            cur++;
-            if(cur == 1){
-                newRow = row + dx[2];
-                newCol = col + dy[2];
-                if (isValidCell(newRow, newCol, grid) && !grid[newRow][newCol].equals("X") ) {
-                    moveBotToNewCell(row, col, newRow, newCol);
-                    return;
-                }
-                else{
-                    cur ++;
+                if (isValidCell(newRow, newCol, grid) && !visitedCells.contains(newRow + "," + newCol)) {
+                    if(grid[newRow][newCol].equals("M")){
+                        int cost = currentNode.cost + 1;
+                        priorityQueue.add(new Node(newRow, newCol, cost, currentNode)); 
+                        // visitedCells.add(newRow + "," + newCol);
+                    }
+                    else if(grid[newRow][newCol].equals("O")){
+                        // grid[newRow][newCol] = "B";
+                        // grid[locationBot[0]][locationBot[1]] = "M";
+                        moveBotToNewCell(locationBot[0], locationBot[1], newRow, newCol);
+
+                        // locationBotG = new int[]{newRow,newCol};
+                        printGrid(grid);
+                        return;
+                    }
                     
                 }
-                if(cur == 1){
-                    newRow = row + dx[3];
-                    newCol = col + dy[3];
-                    if (isValidCell(newRow, newCol, grid) && !grid[newRow][newCol].equals("X") ) {
-                        moveBotToNewCell(row, col, newRow, newCol);
+            }
+            for (int i = 0; i < 4; i++) {
+                int newRow = currentNode.row + dx[i];
+                int newCol = currentNode.col + dy[i];
+
+                if (isValidCell(newRow, newCol, grid) && visitedCells.contains(newRow + "," + newCol)) {
+                    if(grid[newRow][newCol].equals("M")){
+                        int cost = currentNode.cost + 1;
+                        priorityQueue.add(new Node(newRow, newCol, cost, currentNode)); 
+                        // visitedCells.add(newRow + "," + newCol);
+                    }
+                    else if(grid[newRow][newCol].equals("O")){
+                        // grid[newRow][newCol] = "B";
+                        // grid[locationBot[0]][locationBot[1]] = "M";
+                        moveBotToNewCell(locationBot[0], locationBot[1], newRow, newCol);
+
+                        // locationBotG = new int[]{newRow,newCol};
+                        printGrid(grid);
                         return;
                     }
-                }
-                newRow = row + dx[0];
-                newCol = col + dy[0];
-                if (isValidCell(newRow, newCol, grid) && !grid[newRow][newCol].equals("X") ) {
-                    moveBotToNewCell(row, col, newRow, newCol);
-                    return;
-                }
-                cur++;
-                if(cur == 3){
-                    newRow = row + dx[3];
-                    newCol = col + dy[3];
-                    if (isValidCell(newRow, newCol, grid) && !grid[newRow][newCol].equals("X") ) {
-                        moveBotToNewCell(row, col, newRow, newCol);
-                        return;
-                    }
-                    newRow = row + dx[1];
-                    newCol = col + dy[1];
-                    if (isValidCell(newRow, newCol, grid) && !grid[newRow][newCol].equals("X") ) {
-                        moveBotToNewCell(row, col, newRow, newCol);
-                        return;
-                    }
-                    cur--;
+                    
                 }
             }
         }
-            
+    }
+    public void moveToNearestP(String[][] grid, int[] locationBot){
+        PriorityQueue<Node> priorityQueue = new PriorityQueue<>(new Comparator<Node>() {
+            @Override
+            public int compare(Node node1, Node node2) {
+                return Double.compare(node1.cost, node2.cost);
+            }
+        });
+        int row = locationBot[0];
+        int col = locationBot[1];
+        priorityQueue.add(new Node(row, col, 0, null));
+
+        while (!priorityQueue.isEmpty()) {
+            Node currentNode = priorityQueue.poll();
+            visitedCells.add(currentNode.row + "," + currentNode.col);
+            if (grid[currentNode.row][currentNode.col].equals("P")) {
+                // Found the closest cell with value "O".
+                // grid[currentNode.row][currentNode.col] = "B";
+                // grid[locationBot[0]][locationBot[1]] = "M";
+                // locationBotG = new int[]{currentNode.row,currentNode.col};
+                moveBotToNewCell(locationBot[0], locationBot[1], currentNode.row, currentNode.col);
+
+                return;
+            }
+            int s = 4;
+            for (int i = 0; i < s; i++) {
+                int newRow = currentNode.row + dx[i];
+                int newCol = currentNode.col + dy[i];
+
+                if (isValidCell(newRow, newCol, grid) && !visitedCells.contains(newRow + "," + newCol)) {
+                    if(grid[newRow][newCol].equals("M")){
+                        int cost = currentNode.cost + 1;
+                        priorityQueue.add(new Node(newRow, newCol, cost, currentNode)); 
+                    }
+                    else if(grid[newRow][newCol].equals("P")){
+                        // grid[newRow][newCol] = "B";
+                        // grid[locationBot[0]][locationBot[1]] = "M";
+                        moveBotToNewCell(locationBot[0], locationBot[1], newRow, newCol);
+                        //locationBotG = new int[]{newRow,newCol};
+                        printGrid(grid);
+                        return;
+                    }
+                    
+                }
+            }
+
+            for (int i = 0; i < s; i++) {
+                int newRow = currentNode.row + dx[i];
+                int newCol = currentNode.col + dy[i];
+
+                if (isValidCell(newRow, newCol, grid) && visitedCells.contains(newRow + "," + newCol)) {
+                    if(grid[newRow][newCol].equals("M")){
+                        int cost = currentNode.cost + 1;
+                        priorityQueue.add(new Node(newRow, newCol, cost, currentNode)); 
+                    }
+                    else if(grid[newRow][newCol].equals("P")){
+                        // grid[newRow][newCol] = "B";
+                        // grid[locationBot[0]][locationBot[1]] = "M";
+                        moveBotToNewCell(locationBot[0], locationBot[1], newRow, newCol);
+                        //locationBotG = new int[]{newRow,newCol};
+                        printGrid(grid);
+                        return;
+                    }
+                    
+                }
+            }
             
         }
+    }
         
     
     
@@ -372,109 +614,9 @@ class project{
         return false;
     }
 
-    public boolean bfsForShortestPath(String[][] grid, int[] locationBot, int[] locationLeak) {
+    // public boolean bfsForShortestPath(String[][] grid, int[] locationBot, int[] locationLeak) {
         
-
-        Queue<int[]> queue = new LinkedList<>();
-        queue.offer(locationBot);
-
-        while (!queue.isEmpty() && queue.size() < (maxDimension * maxDimension)) {
-            int size = queue.size();
-
-            for (int i = 0; i < size; i++) {
-                
-                int[] current = queue.poll();
-                
-
-                int x = current[0];
-                int y = current[1];
-
-                if (x == locationLeak[0] && y == locationLeak[1]) {
-                    return true;
-                }
-
-                for (int j = 0; j < 4; j++) {
-                    int newRow = x + dx[j];
-                    int newCol = y + dy[j];
-
-                    if (isValidCell(newRow, newCol, grid) ) {
-                        if(grid[newRow][newCol].equals("L")){
-                            grid[newRow][newCol] = "B";
-                            return true;
-                        }
-                        else if(grid[newRow][newCol].equals("P")){
-                            queue.offer(new int[]{newRow, newCol});
-                            grid[newRow][newCol] = "M"; // Mark the cell as visited.
-                        }
-                        
-                    }
-                }
-                for(int k = 0; k < 4; k++){
-                    int newRow = x + dx[k];
-                    int newCol = y + dy[k];
-
-                    if(isValidCell(newRow, newCol, grid)){
-                        if(grid[newRow][newCol].equals("L")){
-                            grid[newRow][newCol].equals("B");
-                            return true;
-                        }
-                        else if(grid[newRow][newCol].equals("M")){
-                            queue.offer(new int[]{newRow, newCol});
-                            // we don't know if we should mark this as anything
-                        }
-                    }
-                }
-
-            }
-
-        }
-
-        return false; // No path found.
-        // Queue<int[]> queue = new LinkedList<>();
-        // queue.offer(locationBot);
-
-        // int pAttempts = 0;
-        // int mAttempts = 0;
-
-        // while (!queue.isEmpty()) {
-        //     int size = queue.size();
-        //     int[] current = queue.poll();
-            
-        //     int x = current[0];
-        //     int y = current[1];
-
-        //     for (int j = 0; j < 4; j++) {
-        //         int newRow = x + dx[j];
-        //         int newCol = y + dy[j];
-
-        //         if (isValidCell(newRow, newCol, grid)) {
-        //             if (pAttempts < 4) {
-        //                 if (grid[newRow][newCol].equals("P")) {
-        //                     queue.offer(new int[]{newRow, newCol});
-        //                     grid[newRow][newCol] = "B"; // Mark the cell as visited.
-        //                     pAttempts = 0;
-        //                 } else if (grid[newRow][newCol].equals("L")) {
-        //                     grid[newRow][newCol] = "B";
-        //                     return true;
-        //                 }
-        //                 pAttempts++;
-        //             } else if (mAttempts < 4) {
-        //                 if (grid[newRow][newCol].equals("M")) {
-        //                     queue.offer(new int[]{newRow, newCol});
-        //                     grid[newRow][newCol] = "B"; // Mark the cell as visited.
-        //                     mAttempts = 0;
-        //                 } else if (grid[newRow][newCol].equals("L")) {
-        //                     grid[newRow][newCol] = "B";
-        //                     return true;
-        //                 }
-        //                 mAttempts++;
-        //             }
-        //         }
-        //     }
-        // }
-
-        // return false; 
-}
+    // }
 
     
 
