@@ -16,7 +16,7 @@ import java.util.Stack;
 import java.util.concurrent.ThreadLocalRandom;
 
 class project{
-    private static int maxDimension = 10;
+    private static int maxDimension = 3;
     private static int k = 1;
     private int[] locationBotG;
     String[][] grid;
@@ -24,6 +24,7 @@ class project{
     int[] dx = { -1, 1, 0, 0 };
     int[] dy = { 0, 0, -1, 1 };
     Random random;
+    double alpha = 0.5;
     /**
     TODO:
     1- is there a faster way to reach to subgrid center cell?
@@ -33,10 +34,18 @@ class project{
 
 
     Questions:
-    what do you do when it gets stuck in the edge case that I took a picture in my phone
-    the way I move the bot it intents to explore the top left first then checks the rest
-    **after finding the leak cell in the detection square, are you only allowed to go to the cells that didn't marked as not contained?
+    do we have to give a probability to every open cell in the grid or can we just give it to the neighbors and work through the neighbors.
+    1-Initialize the probability of each cell containing the leak.
+    2-Create a priority queue to store the cells in order of decreasing probability.
+    Should I insert only the open neighbor cells to the bot cell and go only the highest probability cell in near the bot or should I insert every open cell to the priority queue and try to reach the highest probability cell in no matter how far the the distance is? Thank you!
     
+    bot 3: 
+    in every time step, you either can move or take the sense action
+    - you plan a path to the highest probability cell,
+    - on the way, if you hear a beap, it means you are getting closer to the leak so you update the probability
+    - on the way, if you don't hear a beap, it means you are getting far away from the leak so you update the probability.
+    -    
+
 
     Bot 2 idea: The bot tries to go to the center of the grid first while still checking for the detection square,
      and after reaching to the center of the grid, 
@@ -82,7 +91,7 @@ class project{
         }
         int[] locationLeak = theProject.getRandomOpenCell(theProject.grid);
         if(locationLeak != null){
-            theProject.grid[locationLeak[0]][locationLeak[1]] = "L";
+            theProject.grid[locationLeak[0]][locationLeak[1]] = "O";
         }
         else{
             return;
@@ -93,33 +102,665 @@ class project{
             theProject.printGrid(theProject.grid);
             //theProject.secondBot(theProject.grid, theProject.locationBotG, locationLeak);
             //result = theProject.bot1(theProject.grid,locationLeak);
-            
+            theProject.thirdBot(theProject.grid, theProject.locationBotG, locationLeak);
         }
         
     }
-    private double m = 0.5;
 
-    public void thirdBot(String[][] grid, int[] locationBot, int[] locationLeak){
-        /**
+    /**
+     * I need to figure out the beep probability based on the math I did on the paper. 
+     * Then I need to figure out how to switch the target in the path when you have a cell that have higher probability.
+     * @param grid
+     * @param botLocation
+     * @param leakLocation
+     * @return
+     */
+    public int thirdBot(String[][] grid, int[] botLocation, int[] leakLocation) {
+        int numRows = grid.length;
+        int numCols = grid[0].length;
+        double[][] probabilityMatrix = initializeProbabilityMatrix(grid, numRows, numCols);
+
+        int totalActions = 0;
+        Random random = new Random();
+
+        while (!locationEquals(botLocation, leakLocation)) {
+            //probabilityMatrix = botEntersCellProbabilityUpdate(grid, probabilityMatrix, botLocation, leakLocation);
+            
+            int[] nextLocation = getLocationOfMaxProbability(probabilityMatrix);
+            List<int[]> path = planPathFromTo(grid, botLocation, nextLocation);
+            // locationBot = 0,1 but it should still be 0,0 in a grid like B M O 
+//O O O 
+//O O X 
+            for (int[] cell : path) {
+                
+                botLocation = moveBot(grid, botLocation, cell);
+                double beepProb = probabilityOfHearingBeep(grid, botLocation, leakLocation);
+                boolean beep = random.nextDouble() <= beepProb;
+                totalActions++;
+
+                if (beep) {
+                    probabilityMatrix = beepProbabilityUpdate(grid, probabilityMatrix, botLocation, leakLocation, beepProb);
+                } else {
+                    probabilityMatrix = noBeepProbabilityUpdate(grid, probabilityMatrix, botLocation, leakLocation, beepProb);
+                }
+                
+                printGrid(grid);
+                if (locationEquals(botLocation, leakLocation)) {
+                    return totalActions;
+                } else {
+                    // bot moved to a cell that is not a leak cell
+                    // update this cell's probability
+                    // update the rest of the cells probability based on this cell not containing the leak
+
+                    probabilityMatrix = enteringCellNotLeak(grid, probabilityMatrix);
+                }
+                totalActions++;
+            }
+        }
+
+        return totalActions;
+    }
+    public int[] moveBot(String[][] grid, int[] locationBot, int[] cell){
+        grid[locationBot[0]][locationBot[1]] = "M";
+        grid[cell[0]][cell[1]] = "B";
+        return cell;
+    }
+    // bot moved to a cell that is not a leak cell
+    // update this cell's probability
+    // update the rest of the cells probability based on this cell not containing the leak
+    public double denominatorForConditionalProb(double[][]probabilityMatrix){
+        
+        double denominator =0.0;
+        for (int i = 0; i < maxDimension; i++) {
+            for (int j = 0; j < maxDimension; j++) {
+                if(grid[i][j].equals("O")){
+                    denominator += probabilityMatrix[i][j];
+                }
+            }
+        }
+        return denominator;
+
+    }
+    public double[][] enteringCellNotLeak(String[][] grid, double[][] probabilityMatrix){
+        int numRows = maxDimension;
+        int numCols = maxDimension;
+        double denominator = denominatorForConditionalProb(probabilityMatrix);
+        for (int i = 0; i < numRows; i++) {
+            for (int j = 0; j < numCols; j++) {
+                if(grid[i][j].equals("O")){
+                    probabilityMatrix[i][j] = probabilityMatrix[i][j] / denominator;
+                }
+                else{
+                    probabilityMatrix[i][j] = 0.0;
+                }
+            }
+        }
+        return probabilityMatrix;
+    }
+
+
+    private List<int[]> planPathFromTo(String[][] grid, int[] start, int[] target) {
+        int rows = maxDimension;
+        
+
+        int cols = maxDimension;
+        
+
+        int[] dr = {-1, 0, 1, 0}; // Directions for row movement (up, right, down, left)
+        int[] dc = {0, 1, 0, -1}; // Directions for column movement
+
+        boolean[][] visited = new boolean[rows][cols]; // To mark visited cells
+        int[][] distance = new int[rows][cols]; // To keep track of the distance
+
+        Queue<int[]> queue = new LinkedList<>();
+        queue.offer(start);
+        visited[start[0]][start[1]] = true;
+
+        while (!queue.isEmpty()) {
+            int[] current = queue.poll();
+
+            if (current[0] == target[0] && current[1] == target[1]) {
+                // Target reached, backtrack to build the path
+                List<int[]> path = new ArrayList<>();
+                int[] temp = target;
+                while (!Arrays.equals(temp, start) && !path.contains(temp)) {
+                    path.add(temp);
+                    for (int i = 0; i < 4; i++) {
+                        int newRow = temp[0] + dr[i];
+                        int newCol = temp[1] + dc[i];
+                        if (newRow >= 0 && newRow < rows && newCol >= 0 && newCol < cols &&
+                                distance[newRow][newCol] == distance[temp[0]][temp[1]] - 1) {
+                                    if(!grid[newRow][newCol].equals("X")){
+                                        temp = new int[]{newRow, newCol};
+                                        break;
+                            }
+                        }
+                    }
+                }
+                path.add(start);
+                Collections.reverse(path);
+                return path.subList(1, path.size());
+            }
+
+            for (int i = 0; i < 4; i++) {
+                int newRow = current[0] + dr[i];
+                int newCol = current[1] + dc[i];
+
+                if (newRow >= 0 && newRow < rows && newCol >= 0 && newCol < cols &&
+                         !visited[newRow][newCol]) {
+                            if(grid[newRow][newCol].equals("O") || grid[newRow][newCol].equals("M")){
+                    queue.offer(new int[]{newRow, newCol});
+                    visited[newRow][newCol] = true;
+                    distance[newRow][newCol] = distance[current[0]][current[1]] + 1;
+                }
+            }
+            }
+        }
+
+        return new ArrayList<>(); // If there's no path
+    }
+
+    
+
+    private int[] getLocationOfMaxProbability(double[][] probabilityMatrix) {
+        int numRows = probabilityMatrix.length;
+        int numCols = probabilityMatrix[0].length;
+    
+        double maxProbability = Double.MIN_VALUE;
+        int[] maxLocation = new int[]{0, 0};
+    
+        for (int i = 0; i < numRows; i++) {
+            for (int j = 0; j < numCols; j++) {
+                if (probabilityMatrix[i][j] > maxProbability) {
+                    maxProbability = probabilityMatrix[i][j];
+                    maxLocation[0] = i;
+                    maxLocation[1] = j;
+                }
+            }
+        }
+    
+        return maxLocation;
+    }
+    
+
+    private double[][] noBeepProbabilityUpdate(String[][] grid, double[][] probabilityMatrix, int[] botLocation, int[] leakLocation, double beepProb) {
+        int numRows = grid.length;
+        int numCols = grid[0].length;
+        
+        double[][] updatedProbabilityMatrix = new double[numRows][numCols];
+        
+        //double beepProbability = probabilityOfHearingBeep(grid, botLocation, leakLocation);
+        // Implement the probability update for a no-beep event here
+        // You should update the updated Probability Matrix accordingly
+        
+        for (int i = 0; i < numRows; i++) {
+            for (int j = 0; j < numCols; j++) {
+                // Calculate P( leak in cell j | heard no beep in bot_location )
+                // Implement your conditional probability calculation here
+                updatedProbabilityMatrix[i][j] = calculateNoBeepConditionalProbability(probabilityMatrix, beepProb, i, j);
+            }
+        }
+        
+        return updatedProbabilityMatrix;
+    }
+    private double calculateNoBeepConditionalProbability(double[][] probabilityMatrix, double beepProbability, int i, int j) {
+        double noBeepProbability = 1.0 - beepProbability;
+        
+        double numerator = probabilityMatrix[i][j] * noBeepProbability;
+        double denominator = 0.0;
+        
+        int numRows = probabilityMatrix.length;
+        int numCols = probabilityMatrix[0].length;
+        
+        for (int row = 0; row < numRows; row++) {
+            for (int col = 0; col < numCols; col++) {
+                denominator += probabilityMatrix[row][col] * noBeepProbability;
+            }
+        }
+        
+        // Calculate P( leak in cell j | heard no beep in bot_location )
+        double conditionalProbability = numerator / denominator;
+        
+        return conditionalProbability;
+    }
+
+    private double[][] beepProbabilityUpdate(String[][] grid, double[][] probabilityMatrix, int[] botLocation, int[] leakLocation, double beepProb) {
+        int numRows = grid.length;
+        int numCols = grid[0].length;
+    
+        double[][] updatedProbabilityMatrix = new double[numRows][numCols];
+    
+        //double beepProbability = probabilityOfHearingBeep(grid, botLocation, leakLocation);
+    
+        for (int i = 0; i < numRows; i++) {
+            for (int j = 0; j < numCols; j++) {
+                double beepConditionalProbability = calculateBeepConditionalProbability(probabilityMatrix, beepProb, i, j, botLocation, leakLocation);
+                updatedProbabilityMatrix[i][j] = beepConditionalProbability;
+            }
+        }
+    
+        return updatedProbabilityMatrix;
+    }
+    
+    private double probabilityOfHearingBeep(String[][] grid, int[] botLocation, int[] leakLocation) {
+        // Plan the path from botLocation to leakLocation
+        List<int[]> path = planPathFromTo(grid, botLocation, leakLocation);
+    
+        // Calculate the distance (d) as the length of the path
+        int d = path.size();
+    
+        // Calculate the probability of receiving a beep
+        double probability = Math.exp(-alpha * (d - 1));
+    
+        // Ensure the probability is not greater than 1 if the bot is immediately next to the leak
+        if (d == 1) {
+            probability = 1.0;
+        }
+    
+        return probability;
+    }
+    
+    private double calculateBeepConditionalProbability(double[][] probabilityMatrix, double beepProbability, int i, int j, int[] botLocation, int[] leakLocation) {
+        // Calculate P(leak in cell j | heard beep in cell i)
+        // Adjust the probability based on the bot's movement direction and hearing a beep
+    
+        double existingProbability = probabilityMatrix[i][j];
+    
+        // Calculate the direction from botLocation to leakLocation
+        int dx = leakLocation[0] - botLocation[0];
+        int dy = leakLocation[1] - botLocation[1];
+    
+        // Check if the bot is moving in the direction of the leak (closer)
+        if ((dx == 0 && dy == 1) || (dx == 0 && dy == -1) || (dx == 1 && dy == 0) || (dx == -1 && dy == 0)) {
+            // Increase probability if the bot is moving towards the leak
+            existingProbability += beepProbability * existingProbability;
+        }
+    
+        return existingProbability;
+    }
+
+
+    private double calculateBeepConditionalProbability(double[][] probabilityMatrix, double beepProbability, int row, int col) {
+        // Calculate P(leak in cell j | heard beep in bot_location)
+        double numerator = probabilityMatrix[row][col] * beepProbability;
+        
+        double denominator = 0.0;
+        int numRows = probabilityMatrix.length;
+        int numCols = probabilityMatrix[0].length;
+    
+        // Calculate the denominator, which sums the probabilities over all cells
+        for (int i = 0; i < numRows; i++) {
+            for (int j = 0; j < numCols; j++) {
+                denominator += probabilityMatrix[i][j] * beepProbability;
+            }
+        }
+    
+        // Calculate the conditional probability
+        double conditionalProbability = numerator / denominator;
+    
+        return conditionalProbability;
+    }
+
+    
+    
+
+    
+    
+    private double summationProb(double[][] probabilityMatrix) {
+        // Calculate the sum of probabilities in the probabilityMatrix
+        int numRows = probabilityMatrix.length;
+        int numCols = probabilityMatrix[0].length;
+    
+        double sumProb = 0.0;
+        double[][] updatedProbabilityMatrix = initializeProbabilityMatrix(grid, numRows, numCols);
+        for (int i = 0; i < numRows; i++) {
+            for (int j = 0; j < numCols; j++) {
+                sumProb += updatedProbabilityMatrix[i][j];
+            }
+        }
+    
+        return sumProb;
+    }
+
+    private double[][] initializeProbabilityMatrix(String[][] grid, int numRows, int numCols) {
+        int openCellCount = countOpenCells(grid, numRows, numCols);
+        double initialProbability = 1.0 / openCellCount;
+        double[][] probabilityMatrix = new double[numRows][numCols];
+
+        for (int i = 0; i < numRows; i++) {
+            for (int j = 0; j < numCols; j++) {
+                if (grid[i][j].equals("O") || grid[i][j].equals("L")) {
+                    probabilityMatrix[i][j] = initialProbability;
+                } else {
+                    probabilityMatrix[i][j] = 0.0;
+                }
+            }
+        }
+        return probabilityMatrix;
+    }
+    private int countOpenCells(String[][] grid, int numRows, int numCols) {
+        int count = 0;
+        for (int i = 0; i < numRows; i++) {
+            for (int j = 0; j < numCols; j++) {
+                if (grid[i][j].equals("O")) {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+    private boolean locationEquals(int[] a, int[] b) {
+        return a[0] == b[0] && a[1] == b[1];
+    }
+
+
+    // public void thirdBot(String[][] grid, int[] locationBot, int[] locationLeak){
+    //     double openCells = countOpenNeighbors(grid);
+    //     // 1- initialize the probability of each cell containing the leak
+    //     List<Node> cellList = probCellsLeak(grid, openCells);
+    //     // 2- Create a priority queue to store the cells in order of decreasing probability.
+    //     PriorityQueue<Node> queue = new PriorityQueue<>((a, b) -> -Double.compare(a.probability, b.probability));       
+        
+    //     for(Node node : cellList){
+    //         queue.add(node);
+    //     }    
+        
+    //     // run this while leak is found.
+    //     Node currentCell = new Node(locationBot[0], locationBot[1], 0, null, 0.0);
+    //     // ***** need to get the location of the leak as node
+    //     while(!finalCheck(grid, locationLeak)){
+    //         // 4a-Remove the first cell from the priority queue. 
+    //         Node goalCell = queue.poll();
+            
+    //         // 5-find a shortest path from current cell to that cell
+    //         Queue<Node> shortestPath = bfs(cellList,grid, new int[]{currentCell.row, currentCell.col}, new int[]{goalCell.row,goalCell.col});
+
+    //         // 5d- when you move to a new cell in the path, update the probability of every other cell based on
+            
+    //         Node newCell = shortestPath.poll();
+    //         if(grid[newCell.row][newCell.col].equals("B")){
+    //             newCell = shortestPath.poll();
+    //         }
+    //         grid[newCell.row][newCell.col] = "B";
+    //         grid[currentCell.row][currentCell.col] = "O";
+    //         if(finalCheck(grid, locationLeak)){
+    //             // true
+    //             return;
+    //         }
+    //         else{
+    //             // 5da- if it is not a leak cell, update the probability of every other cell
+    //             //  you also need to update the probability of that cell that you just moved
+    //             newCell.setProbability(0);
+    //             cellList.set(cellList.indexOf(newCell),newCell);
+    //             double randomDouble = random.nextDouble();
+    //             // now we are here!!!!
+    //             // 5daa- when you don't find the leak and you hear the beep, update the probability of every other cell.
+    //             if(randomDouble < beepProbability(newCell, currentCell, openCells)){
+    //                 // update the probability of each cell (positive in the direction because we are getting closer to the leak)
+                    
+    //                 for(Node node : cellList){
+    //                     if(node.probability > 0){
+    //                         updateProbs(node, cellList);
+    //                         // need to take account the beap now.
+    //                     }
+    //                 }
+    //             }
+
+    //             // 5dab- when you don't find the leak and you DON'T hear the beep, update the probability of every other cell.
+    //             else{
+    //                 // update the probability of each cell (negative in the direction because we are going away from the leak)
+    //                 for(Node node : cellList){
+    //                     if(node.probability > 0){
+    //                         updateProbs(node, cellList);
+    //                         // need to take account the beap now.
+    //                     }
+    //                 }
+    //             }
+
+    //         }
+    //         // 5db- based on the updated probabilities check whether the goal cell of that path have still the highest probability
+            
+
+
+    //     }
+    // }
+    // public double updateProbs(Node updateNode, List<Node>cellList){
+    //     return updateNode.probability / summationProb(cellList);
+    // }
+    // // i can just update it from the list and if there is any 
+    // public double summationProb( List<Node> cellList){
+    //     double sumProb = 0.0;
+    //     for(Node node : cellList){
+    //         sumProb += node.probability;
+    //     }
+    //     return sumProb;
+    // }
+        /** 
          
     1-Initialize the probability of each cell containing the leak.
     2-Create a priority queue to store the cells in order of decreasing probability.
-    3-Add the initial cell to the priority queue.
+    3-start from the initial cell (locationBot)
     4- Repeat until the leak is found:
-        4a-Remove the first cell from the priority queue.
+        4a-Remove the first cell from the priority queue. 
+        5-find a shortest path from current cell to that cell
+                5a- when you enter this cell if it is leak cell then return true.
+                5b- if it is not a leak cell, remove the first cell from the priority queue.
+                5c- repeat the same action until leak is found. 
+            5d- when you move to a new cell in the path, update the probability of every other cell based on
+                5da- if it is not a leak cell, update the probability of every other cell
+                    5daa- when you don't find the leak and you hear the beep, update the probability of every other cell.
+                    5dab- when you don't find the leak and you DON'T hear the beep, update the probability of every other cell.
+                5db- based on the updated probabilities check whether the goal cell of that path have still the highest probability
+                    5dba- if it is the highest, just move to the next cell and do the same thing until you get to the goal cell.
+                    5dbb- if it isn't the highest, just update the shortest path to the new highest probability cell.
         4b-Take the sense action at the current cell.
         4c-Update the probability of each cell containing the leak based on the result of the sense action.
-        4d-Add the neighbors of the current cell to the priority queue, if they are not already in the queue.
     5-If the probability of any cell containing the leak is 1, then return the coordinates of that cell.
     6-Otherwise, return None.
 
+
+    // Define the grid, dimensions, and other necessary members here.
+
+    public int[] findLeak(String[][] grid, int[] locationBot) {
+        int maxDimension = grid.length;
+
+        // Step 1: Initialize the probability of each cell containing the leak.
+        Map<int[], Double> probabilities = new HashMap<>();
+        for (int i = 0; i < maxDimension; i++) {
+            for (int j = 0; j < maxDimension; j++) {
+                int[] cell = new int[]{i, j};
+                if (!cell.equals(locationBot)) {
+                    probabilities.put(cell, 1.0 / (maxDimension * maxDimension));
+                }
+            }
+        }
+
+        // Step 2: Create a priority queue to store the cells in order of decreasing probability.
+        PriorityQueue<int[]> priorityQueue = new PriorityQueue<>(
+            (a, b) -> Double.compare(probabilities.get(b), probabilities.get(a))
+        );
+
+        
+
+        while (!finalCheck(grid,locationBot)) {
+            // Step 3: start from the initial cell(locationBot)
+            int[] current = locationBot;
+
+            // step 4a: remove the first cell from the priority queue
+            int[] goal = priorityQueue.poll();
+
+
+
+            // Step 5: Find a shortest path from the current cell to the highest probability cell.
+            shortestPath(grid, current, goal, priorityQueue);
+
+
+            if (goal == null) {
+                // No more cells to search, exit the loop.
+                break;
+            }
+
+            List<int[]> shortestPath = findShortestPath(grid, current, goal);
+
+            for (int i = 0; i < shortestPath.size(); i++) {
+                int[] cell = shortestPath.get(i);
+
+                // Step 5a: If it's a leak cell, return true.
+                if (grid[cell[0]][cell[1]].equals("L")) {
+                    return cell;
+                }
+
+                // Step 5c: Update the probability of every other cell.
+                updateProbabilities(probabilities, cell, grid);
+                
+                // Step 5d: Check whether the goal cell still has the highest probability.
+                int[] newGoal = findHighestProbabilityCell(probabilities);
+                if (!goal.equals(newGoal)) {
+                    goal = newGoal;
+                    shortestPath = findShortestPath(grid, cell, goal);
+                    i = -1; // Restart the path from the beginning.
+                }
+            }
+
+            // Step 4b: Take the sense action at the current cell.
+            // Step 4c: Update the probability of each cell containing the leak based on the result of the sense action.
+            // (Implement this part according to your sensing logic.)
+        }
+
+        // Step 5: If the probability of any cell containing the leak is 1, return its coordinates.
+        for (int[] cell : probabilities.keySet()) {
+            if (probabilities.get(cell) == 1.0) {
+                return cell;
+            }
+        }
+
+        // Step 6: If no cell with probability 1 is found, return None or handle accordingly.
+        return null;
+    }
+
+        
          */
             
-    }
-    private static boolean sense(String[][] grid, int cellIndex) {
-        // Check if the current cell contains a leak.
-        return grid[cellIndex / grid[0].length][cellIndex % grid[0].length].equals("L");
-    }
+    
+    
+    // private Queue<Node> constructPath(Node targetNode) {
+    //     Queue<Node> path = new LinkedList<>();
+    //     Stack<Node> stack = new Stack<>();
+
+    //     // Build the path by backtracking from the target node to the start node
+    //     Node current = targetNode;
+    //     while (current != null) {
+    //         stack.push(current);
+    //         current = current.parent;
+    //     }
+
+    //     while (!stack.isEmpty()) {
+    //         path.add(stack.pop());
+    //     }
+
+    //     return path;
+    // }
+    // public Queue<Node> bfs(List<Node> cellList,String[][] grid, int[] start, int[] target) {
+    //     int numRows = grid.length;
+    //     int numCols = grid[0].length;
+    //     boolean[][] visited = new boolean[numRows][numCols];
+
+    //     int[] dx = {-1, 1, 0, 0};
+    //     int[] dy = {0, 0, -1, 1};
+
+    //     Queue<Node> queue = new LinkedList<>();
+    //     Node startNode = getNodeByRowAndCol(cellList, start[0], start[1]);
+    //     queue.offer(startNode);
+    //     visited[startNode.row][startNode.col] = true;
+
+    //     while (!queue.isEmpty()) {
+    //         Node current = queue.poll();
+
+    //         if (current.row == target[0] && current.col == target[1]) {
+    //             return constructPath(current);
+    //         }
+
+    //         for (int i = 0; i < 4; i++) {
+    //             int newRow = current.row + dx[i];
+    //             int newCol = current.col + dy[i];
+
+    //             if (isValidCell(newRow, newCol, grid) &&
+    //                 !visited[newRow][newCol] && !grid[newRow][newCol].equals("X")) {
+    //                 Node neighbor = getNodeByRowAndCol(cellList, newRow, newCol);
+    //                 neighbor.cost = current.cost + 1;
+    //                 neighbor.parent = current;
+    //                 queue.offer(neighbor);
+    //                 visited[newRow][newCol] = true;
+    //             }
+    //         }
+    //     }
+
+    //     return new LinkedList<>(); // Empty queue means no path found
+    // }
+
+    // private Node getNodeByRowAndCol(List<Node> cellsList, int row, int col) {
+    //     for (Node node : cellsList) {
+    //         if (node.row == row && node.col == col) {
+    //             return node;
+    //         }
+    //     }
+    //     return null; // Node not found in the list
+    // }
+    // public int shortestPathDistance(String[][] grid, int[] currentCell, int[] leakCell){
+    //     return 1;
+    // }
+    // public double beepProbability(Node currentNode, Node leakNode, double alpha) {
+    //     // Calculate the distance between the bot and the leak.
+    //     int[] current = new int[]{currentNode.row, currentNode.col};
+    //     int[] leak = new int[]{leakNode.row, leakNode.col};
+    //     int distance = shortestPathDistance(grid, current, leak);
+    
+    //     // Calculate the probability of the bot receiving a beep.
+    //     double probability = Math.exp(-alpha * (distance - 1));
+    
+    //     // If the bot is immediately next to the leak, the probability of receiving a beep is 1.
+    //     if (distance == 1) {
+    //         probability = 1;
+    //     }
+    
+    //     return probability;
+    // }
+    // public double countOpenNeighbors(String[][] grid){
+    //     double number = 0.0;
+    //     for(int i = 0; i < maxDimension; i++){
+    //         for(int j = 0; j < maxDimension; j++){
+    //             if(grid[i][j].equals("O")){
+    //                 number++;
+    //             }
+    //         }
+    //     }
+    //     return number;
+    // }
+    // public List<Node> probCellsLeak(String[][] grid, double openCells) {
+    //     double initialProbability = 1.0 / openCells;
+    //     int maxDimension = grid.length;
+    //     List<Node> probabilityNodes = new ArrayList<>();
+    
+    //     for (int i = 0; i < maxDimension; i++) {
+    //         for (int j = 0; j < maxDimension; j++) {
+    //             if (grid[i][j].equals("O")) {
+    //                 Node node = new Node(i, j, 0, null, initialProbability);
+    //                 probabilityNodes.add(node);
+    //             }
+    //             if(grid[i][j].equals("B")){
+    //                 Node node = new Node(i, j, 0, null, 0.0);
+    //                 probabilityNodes.add(node);
+    //             }
+    //         }
+    //     }
+    
+    //     return probabilityNodes;
+    // }
+    // public boolean sense(String[][] grid, int[] currentCell) {
+
+    //     // Check if the current cell contains a leak.
+    //     return grid[currentCell[0]][currentCell[1]].equals("L");
+    // }
     
      
 
@@ -128,7 +769,7 @@ class project{
          
     1- Divide the grid into 10x10 subgrids.
     2- Find the closest subgrid to the bot.
-    3- Move to the center of the closest subgrid.
+    3- Move the bot to the center of the closest subgrid.
     4- Detect the detection square in the closest subgrid.
     5- If the leak is found in the detection square, return.
     6- Move to the next subgrid.
@@ -140,7 +781,7 @@ class project{
         
          while(!result){
             int[] closestCenterCell = findClosestSubgridCenter(locationBot, subGrids);
-            botToCenterCell(grid, locationBot, closestCenterCell);
+            shortestPath(grid, locationBot, closestCenterCell);
             printGrid(grid);
             locationBotG = closestCenterCell;
             if(senseLeakSecondBot(grid, locationBotG) == true){
@@ -188,8 +829,7 @@ class project{
 
         return false;
     }
-
-    public void botToCenterCell(String[][] grid, int[] locationBot, int[] goalCell) {
+    public void shortestPath(String[][] grid, int[] locationBot, int[] goalCell) {
         // PriorityQueue<Node> priorityQueue = new PriorityQueue<>(new Comparator<Node>() {
         //     @Override
         //     public int compare(Node node1, Node node2) {
@@ -413,18 +1053,35 @@ class project{
     // this should try to go to the cells with value "O" first in the up, down, left and right directions, 
     // if it can't find a cell like that then should go to the cells with value "M"
     // 
-    private static class Node {
+    private class Node {
         private int row;
         private int col;
         private int cost;
         private Node parent;
-
+        private double probability;
+       
+        
+        public double getProbability() {
+            return probability;
+        }
+        public void setProbability(double probability) {
+            this.probability = probability;
+        }
         public Node(int row, int col, int cost, Node parent) {
             this.row = row;
             this.col = col;
             this.cost = cost;
             this.parent = parent;
         }
+        public Node(int row, int col, int cost, Node parent, double probability){
+            this.row = row;
+            this.col = col;
+            this.cost = cost;
+            this.parent = parent;
+            this.probability = probability;
+        }
+
+        
         
     }
 
